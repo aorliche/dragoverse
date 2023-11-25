@@ -1,26 +1,29 @@
 import {$, $$, drawText, Point} from './util.js';
 
 class Sprite {
-    constructor(name, url, urlRev, onload) {
-        this.img = new Image();
-        this.img.src = url;
-        this.img.onload = onload;
-
-        if (urlRev) {
-            this.imgRev = new Image();
-            this.imgRev.src = urlRev;
-            this.imgRev.onload = onload;
-        }
+    constructor(name, urls, onload) {
+        this.name = name;
+        this.last = null;
+        this.imgs = urls.map(url => {
+            if (!url) {
+                return null;
+            }
+            const img = new Image();
+            img.src = url;
+            img.onload = onload;
+            if (!this.last) {
+                this.last = img;
+            }
+            return img;
+        });
     }
 
-    draw(ctx, x, y, rev) {
-        const w = this.img.width;
-        const h = this.img.height;
-        if (rev && this.imgRev) {
-            ctx.drawImage(this.imgRev, x-w/2, y-h/2);
-        } else {
-            ctx.drawImage(this.img, x-w/2, y-h/2);
+    get nimgs() {
+        let num = 0;
+        for (let i=0; i<this.imgs.length; i++) {
+            if (this.imgs[i]) num++;
         }
+        return num;
     }
 }
 
@@ -43,23 +46,24 @@ class Actor {
         this.pos = pos;
         this.moveAnim = null;
         this.ai_ = null;
+        this.last = this.sprite.imgs[0];
     }
 
     set ai(ai) {
         this.ai_ = spawnWorker(ai);
         this.ai_.onmessage = e => {
-            e.data.forEach(act => {
-                switch (act.type) {
-                    case 'LR': this.move('LR', act.val); break;
-                    case 'UD': this.move('UD', act.val); break;
-                }
-            });
+            const act = e.data;
+            if (!act || !act.type) return;
+            switch (act.type) {
+                case 'LR': this.move('LR', act.val); break;
+                case 'UD': this.move('UD', act.val); break;
+            }
         };
     }
 
     contains(x, y) {
-        return x >= this.pos.x - this.sprite.img.width/2 && x <= this.pos.x + this.sprite.img.width/2 &&
-            y >= this.pos.y - this.sprite.img.height/2 && y <= this.pos.y + this.sprite.img.height/2;
+        return x >= this.pos.x - this.last.width/2 && x <= this.pos.x + this.last.width/2 &&
+            y >= this.pos.y - this.last.height/2 && y <= this.pos.y + this.last.height/2;
     }
 
     click(x, y) {
@@ -75,7 +79,11 @@ class Actor {
         const d = this.pos.minus(this.stage.focus);
         const r = Math.sqrt(2)*Math.max(this.stage.canvas.width, this.stage.canvas.height)/2;
         if (d.norm() > r) return;
-        this.sprite.draw(ctx, d.x+this.stage.canvas.width/2, d.y+this.stage.canvas.height/2, this.rev);
+        const x = d.x+this.stage.canvas.width/2;
+        const y = d.y+this.stage.canvas.height/2;
+        const w = this.last.width;
+        const h = this.last.height;
+        ctx.drawImage(this.last, x-w/2, y-h/2, w, h);
     }
     
     move(how, val) {
@@ -83,9 +91,18 @@ class Actor {
         if (how == 'LR') {
             this.pos.x += this.stats.speed*val;
             // Reverse or not
-            this.rev = val < 0;
+            if (val < 0 && this.sprite.imgs[1]) {
+                this.last = this.sprite.imgs[1];
+            } else if (val >= 0 && this.sprite.imgs[0]) {
+                this.last = this.sprite.imgs[0];
+            }
         } else if (how == 'UD') {
             this.pos.y += this.stats.speed*val;
+            if (val <= 0 && this.sprite.imgs[2]) {
+                this.last = this.sprite.imgs[2];
+            } else if (val > 0 && this.sprite.imgs[3]) {
+                this.last = this.sprite.imgs[3];
+            }
         }
         const obj = this.stage.collide(this, obj => obj.stats && obj.stats.solid);
         if (obj) {
@@ -115,8 +132,27 @@ class Actor {
                 this.moveAnim = null;
                 return true;
             }
-            // Reverse or not
-            this.rev = d.x < 0;
+            if (Math.abs(d.x) > Math.abs(d.y)) {
+                if (d.x < 0 && this.sprite.imgs[1]) {
+                    this.last = this.sprite.imgs[1];
+                } else if (d.x >= 0 && this.sprite.imgs[0]) {
+                    this.last = this.sprite.imgs[0];
+                } else if (d.y <= 0 && this.sprite.imgs[2]) {
+                    this.last = this.sprite.imgs[2];
+                } else if (d.y > 0 && this.sprite.imgs[3]) {
+                    this.last = this.sprite.imgs[3];
+                }
+            } else {
+                if (d.y <= 0 && this.sprite.imgs[2]) {
+                    this.last = this.sprite.imgs[2];
+                } else if (d.y > 0 && this.sprite.imgs[3]) {
+                    this.last = this.sprite.imgs[3];
+                } else if (d.x < 0 && this.sprite.imgs[1]) {
+                    this.last = this.sprite.imgs[1];
+                } else if (d.x >= 0 && this.sprite.imgs[0]) {
+                    this.last = this.sprite.imgs[0];
+                }
+            }
             if (this == this.stage.selected) {
                 this.stage.focus = this.pos.clone();
             }
@@ -193,11 +229,9 @@ class Stage {
         for (let i=0; i<this.actors.length; i++) {
             const a = this.actors[i];
             if (a == obj || !fn(a)) continue;
-            const xover1 = obj.pos.x - obj.sprite.img.width/2 >= a.pos.x - a.sprite.img.width/2 && obj.pos.x - obj.sprite.img.width/2 <= a.pos.x + a.sprite.img.width/2;
-            const xover2 = obj.pos.x + obj.sprite.img.width/2 >= a.pos.x - a.sprite.img.width/2 && obj.pos.x + obj.sprite.img.width/2 <= a.pos.x + a.sprite.img.width/2;
-            const yover1 = obj.pos.y - obj.sprite.img.height/2 >= a.pos.y - a.sprite.img.height/2 && obj.pos.y - obj.sprite.img.height/2 <= a.pos.y + a.sprite.img.height/2;
-            const yover2 = obj.pos.y + obj.sprite.img.height/2 >= a.pos.y - a.sprite.img.height/2 && obj.pos.y + obj.sprite.img.height/2 <= a.pos.y + a.sprite.img.height/2;
-            if ((xover1 || xover2) && (yover1 || yover2)) {
+            const xover = Math.abs(obj.pos.x - a.pos.x) < obj.last.width/2 + a.last.width/2;
+            const yover = Math.abs(obj.pos.y - a.pos.y) < obj.last.height/2 + a.last.height/2;
+            if (xover && yover) {
                 return a;
             }
         }
@@ -218,6 +252,8 @@ class Stage {
         this.actors.push(actor);
         if (ai) {
             actor.ai = ai;
+        }
+        if (stats.team) {
             this.team.push(actor);
         }
     }
@@ -288,14 +324,30 @@ window.addEventListener('load', () => {
     let prev = null;
     let nloaded = 0;
 
+    // Right, left, down, up
     const sprites = {
-        'pig': new Sprite('pig', 'image/Pig128_48.png', 'image/Pig128_48rev.png', onLoad),
+        'pig': new Sprite('pig', ['image/Pig128_48.png', 'image/Pig128_48rev.png', null, null], onLoad),
+        'spider-minion': new Sprite('spider-minion', ['image/SpiderMinion128_42right.png', 'image/SpiderMinion128_42left.png', 'image/SpiderMinion128_42rev.png', 'image/SpiderMinion128_42.png'], onLoad),
     };
 
     const stats = {
         'pig': {
+            type: 'pig',
             speed: 4,
             solid: true,
+            health: 20,
+            damage: 0,
+            strength: 3,
+            reload: 600,
+        },
+        'spider-minion': {
+            type: 'spider-minion',
+            speed: 2,
+            solid: true,
+            health: 10,
+            damage: 0,
+            strength: 1,
+            reload: 1200,
         }
     };
 
@@ -308,14 +360,46 @@ window.addEventListener('load', () => {
             const d = Math.sqrt(dx*dx+dy*dy);
             const acts = [];
             if (d > 200) {
-                if (Math.abs(dx) > 10) 
-                    dx < 0 ? acts.push({type: 'LR', val: -1}) : acts.push({type: 'LR', val: 1});
-                if (Math.abs(dy) > 10)
-                    dy < 0 ? acts.push({type: 'UD', val: -1}) : acts.push({type: 'UD', val: 1});
+                if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) {
+                    return dx < 0 ? {type: 'LR', val: -1} : {type: 'LR', val: 1};
+                } else if (Math.abs(dy) > 10) {
+                    return dy < 0 ? {type: 'UD', val: -1} : {type: 'UD', val: 1};
+                }
             }
-            return acts;
+            return null;
         },
+        'spider-minion': (e) => {
+            const me = e.actors[e.me];
+            e.actors.splice(e.me, 1);
+            e.actors.sort((a, b) => {
+                if (a.stats.type == 'pig' && b.stats.type != 'pig') return -1;
+                if (b.stats.type == 'pig' && a.stats.type != 'pig') return 1;
+                const dxa = a.pos.x - me.pos.x;
+                const dya = a.pos.y - me.pos.y;
+                const da = Math.sqrt(dxa*dxa+dya*dya);
+                const dxb = b.pos.x - me.pos.x;
+                const dyb = b.pos.y - me.pos.y;
+                const db = Math.sqrt(dxb*dxb+dyb*dyb);
+                return da-db;
+            });
+            const dx = e.actors[0].pos.x - me.pos.x;
+            const dy = e.actors[0].pos.y - me.pos.y;
+            const d = Math.sqrt(dx*dx+dy*dy);
+            if (d > 50) {
+                if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) {
+                    return dx < 0 ? {type: 'LR', val: -1} : {type: 'LR', val: 1};
+                } else if (Math.abs(dy) > 10) {
+                    return dy < 0 ? {type: 'UD', val: -1} : {type: 'UD', val: 1};
+                }
+            }
+            return null;
+        }
     };
+
+    let nimgs = 0;
+    for (const name in sprites) {
+        nimgs += sprites[name].nimgs;
+    }
 
     function onLoad() {
         nloaded++;
@@ -325,8 +409,9 @@ window.addEventListener('load', () => {
     }
 
     function init() {
-        stage.make(sprites.pig, new Point(20, 200), ais.pig, stats.pig);
-        stage.make(sprites.pig, new Point(300, 200), ais.pig, stats.pig);
+        stage.make(sprites.pig, new Point(20, 200), ais.pig, {...stats.pig, team: true});
+        stage.make(sprites.pig, new Point(300, 200), ais.pig, {...stats.pig, team: true});
+        stage.make(sprites['spider-minion'], new Point(100, 200), ais['spider-minion'], stats['spider-minion']);
         stage.draw();    
     }
 
