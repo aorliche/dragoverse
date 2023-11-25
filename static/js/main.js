@@ -1,16 +1,26 @@
 import {$, $$, drawText, Point} from './util.js';
 
 class Sprite {
-    constructor(name, url, onload) {
+    constructor(name, url, urlRev, onload) {
         this.img = new Image();
         this.img.src = url;
         this.img.onload = onload;
+
+        if (urlRev) {
+            this.imgRev = new Image();
+            this.imgRev.src = urlRev;
+            this.imgRev.onload = onload;
+        }
     }
 
-    draw(ctx, x, y) {
+    draw(ctx, x, y, rev) {
         const w = this.img.width;
         const h = this.img.height;
-        ctx.drawImage(this.img, x-w/2, y-h/2);
+        if (rev && this.imgRev) {
+            ctx.drawImage(this.imgRev, x-w/2, y-h/2);
+        } else {
+            ctx.drawImage(this.img, x-w/2, y-h/2);
+        }
     }
 }
 
@@ -65,13 +75,15 @@ class Actor {
         const d = this.pos.minus(this.stage.focus);
         const r = Math.sqrt(2)*Math.max(this.stage.canvas.width, this.stage.canvas.height)/2;
         if (d.norm() > r) return;
-        this.sprite.draw(ctx, d.x+this.stage.canvas.width/2, d.y+this.stage.canvas.height/2);
+        this.sprite.draw(ctx, d.x+this.stage.canvas.width/2, d.y+this.stage.canvas.height/2, this.rev);
     }
     
     move(how, val) {
         const sav = this.pos.clone();
         if (how == 'LR') {
             this.pos.x += this.stats.speed*val;
+            // Reverse or not
+            this.rev = val < 0;
         } else if (how == 'UD') {
             this.pos.y += this.stats.speed*val;
         }
@@ -79,8 +91,8 @@ class Actor {
         if (obj) {
             this.pos = sav;
         }
-        if (this.moveAnim) this.moveAnim.cancel();
         if (this.stage.selected == this) {
+            if (this.moveAnim) this.moveAnim.cancel();
             this.stage.focus = this.pos.clone();
         }
     }
@@ -103,6 +115,8 @@ class Actor {
                 this.moveAnim = null;
                 return true;
             }
+            // Reverse or not
+            this.rev = d.x < 0;
             if (this == this.stage.selected) {
                 this.stage.focus = this.pos.clone();
             }
@@ -275,7 +289,7 @@ window.addEventListener('load', () => {
     let nloaded = 0;
 
     const sprites = {
-        'pig': new Sprite('pig', 'image/Pig128_48.png', onLoad),
+        'pig': new Sprite('pig', 'image/Pig128_48.png', 'image/Pig128_48rev.png', onLoad),
     };
 
     const stats = {
@@ -305,7 +319,7 @@ window.addEventListener('load', () => {
 
     function onLoad() {
         nloaded++;
-        if (nloaded == Object.keys(sprites).length) {
+        if (nloaded == Object.keys(sprites).length*2) {
             init();
         }
     }
