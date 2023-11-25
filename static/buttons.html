@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Gamepad Buttons</title>
+        <link rel="stylesheet" href="css/main.css">
+<script type='module'>
+import {$, $$} from './js/util.js';
+
+window.addEventListener('load', () => {
+    let pad = null;
+    let prev = null;
+
+    window.addEventListener('gamepadconnected', e => {
+        console.log(e.gamepad.index, e.gamepad.id, e.gamepad.buttons, e.gamepad.axes);
+    });
+
+    function step(ts) {
+        if (prev == null) {
+            prev = ts;
+        } else {
+            const dt = Math.round(1000/10);
+            const next = prev + dt;
+            if (ts < next) {
+                window.requestAnimationFrame(step);
+                return;
+            }
+            // Hack for window losing focus
+            if (ts > prev + 5*dt) {
+                prev = ts;
+            } else {
+                prev = next;
+            }
+        }
+        // Chrome generates new Gamepad objects every action
+        for (const p of navigator.getGamepads()) {
+            if (p) {
+                pad = p;
+                break;
+            }
+        }
+        if (!pad) {
+            window.requestAnimationFrame(step);
+            return;
+        }
+        for (let i=0; i<pad.buttons.length; i++) {
+            const b = pad.buttons[i];
+            if (b.pressed) {
+                console.log(i);
+            }
+        }
+        for (let i=0; i<pad.axes.length; i++) {
+            const value = Math.round(pad.axes[i]);
+            if (Math.abs(value) > 0.1) {
+                console.log(i, value);
+            }
+        }
+        window.requestAnimationFrame(step);
+    }
+
+    window.requestAnimationFrame(step);
+});
+</script>
+    </head>
+    <body>
+        <h1>Gamepad Buttons</h1>
+    </body>
+</html>

@@ -1,0 +1,11 @@
+#canvas {
+    border: 1px solid black;
+}
+#main {
+    display: flex;
+    align-items: flex-start;
+}
+#side {
+    width: 350px;
+    margin-left: 20px;
+}
