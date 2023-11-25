@@ -328,6 +328,7 @@ window.addEventListener('load', () => {
     const sprites = {
         'pig': new Sprite('pig', ['image/Pig128_48.png', 'image/Pig128_48rev.png', null, null], onLoad),
         'spider-minion': new Sprite('spider-minion', ['image/SpiderMinion128_42right.png', 'image/SpiderMinion128_42left.png', 'image/SpiderMinion128_42rev.png', 'image/SpiderMinion128_42.png'], onLoad),
+        'rock': new Sprite('rock', ['image/Rock128_64.png', null, null, null], onLoad),
     };
 
     const stats = {
@@ -348,7 +349,11 @@ window.addEventListener('load', () => {
             damage: 0,
             strength: 1,
             reload: 1200,
-        }
+        },
+        'rock': {
+            type: 'environment',
+            solid: true,
+        },
     };
 
     const ais = {
@@ -412,6 +417,9 @@ window.addEventListener('load', () => {
         stage.make(sprites.pig, new Point(20, 200), ais.pig, {...stats.pig, team: true});
         stage.make(sprites.pig, new Point(300, 200), ais.pig, {...stats.pig, team: true});
         stage.make(sprites['spider-minion'], new Point(100, 200), ais['spider-minion'], stats['spider-minion']);
+        stage.make(sprites.rock, new Point(0, 0), null, stats.rock);
+        stage.make(sprites.rock, new Point(64, 0), null, stats.rock);
+        stage.make(sprites.rock, new Point(128, 0), null, stats.rock);
         stage.draw();    
     }
 
