@@ -47,6 +47,8 @@ class Actor {
         this.moveAnim = null;
         this.ai_ = null;
         this.last = this.sprite.imgs[0];
+        this.lastMove = ['LR', 1];
+        this.lastAttackTs = 0;
     }
 
     set ai(ai) {
@@ -59,6 +61,11 @@ class Actor {
                 case 'UD': this.move('UD', act.val); break;
             }
         };
+    }
+
+    attack(ts) {
+        if (ts < this.lastAttackTs + this.stats.reload) return;
+        this.lastAttackTs = ts;
     }
 
     contains(x, y) {
@@ -90,6 +97,7 @@ class Actor {
         const sav = this.pos.clone();
         if (how == 'LR') {
             this.pos.x += this.stats.speed*val;
+            this.lastMove = ['LR', val > 0 ? 1 : -1];
             // Reverse or not
             if (val < 0 && this.sprite.imgs[1]) {
                 this.last = this.sprite.imgs[1];
@@ -98,6 +106,7 @@ class Actor {
             }
         } else if (how == 'UD') {
             this.pos.y += this.stats.speed*val;
+            this.lastMove = ['UD', val > 0 ? 1 : -1];
             if (val <= 0 && this.sprite.imgs[2]) {
                 this.last = this.sprite.imgs[2];
             } else if (val > 0 && this.sprite.imgs[3]) {
@@ -293,10 +302,11 @@ class Gamepad {
             for (const name in json.Axes) {
                 this.axes[json.Axes[name]] = name;
             }
+            this.buttons = json.Buttons;
         });
     }
 
-    tick() {
+    tick(ts) {
         let pad = null;
         // Chrome generates new Gamepad objects every action
         for (const p of navigator.getGamepads()) {
@@ -313,6 +323,12 @@ class Gamepad {
                 continue;
             }
             this.stage.selected.move(this.axes[i], value);
+        }
+        // Can attack and move at the same time
+        // Attack can fail if on reload
+        const attack = pad.buttons[this.buttons.X].pressed;
+        if (attack) {
+            this.stage.selected.attack(ts);
         }
     }
 }
@@ -340,6 +356,7 @@ window.addEventListener('load', () => {
             damage: 0,
             strength: 3,
             reload: 600,
+            range: 0,
         },
         'spider-minion': {
             type: 'spider-minion',
@@ -349,6 +366,7 @@ window.addEventListener('load', () => {
             damage: 0,
             strength: 1,
             reload: 1200,
+            range: 0,
         },
         'rock': {
             type: 'environment',
@@ -416,7 +434,8 @@ window.addEventListener('load', () => {
     function init() {
         stage.make(sprites.pig, new Point(20, 200), ais.pig, {...stats.pig, team: true});
         stage.make(sprites.pig, new Point(300, 200), ais.pig, {...stats.pig, team: true});
-        stage.make(sprites['spider-minion'], new Point(100, 200), ais['spider-minion'], stats['spider-minion']);
+        stage.make(sprites['spider-minion'], new Point(100, 200), 
+            ais['spider-minion'], stats['spider-minion']);
         stage.make(sprites.rock, new Point(0, 0), null, stats.rock);
         stage.make(sprites.rock, new Point(64, 0), null, stats.rock);
         stage.make(sprites.rock, new Point(128, 0), null, stats.rock);
@@ -444,7 +463,7 @@ window.addEventListener('load', () => {
                 prev = next;
             }
         }
-        pad.tick();
+        pad.tick(ts);
         stage.tick();
         stage.draw();
         window.requestAnimationFrame(step);
