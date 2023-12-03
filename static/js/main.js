@@ -39,8 +39,28 @@ function spawnWorker(func) {
     return worker;
 }
 
+class Prop {
+    constructor(stage, img, pos) {
+        this.stage = stage;
+        this.img = img;
+        this.pos = pos;
+    }
+
+    draw(ctx) {
+        const d = this.pos.minus(this.stage.focus);
+        const r = Math.sqrt(2)*Math.max(this.stage.canvas.width, this.stage.canvas.height)/2;
+        if (d.norm() > r) return;
+        const x = d.x+this.stage.canvas.width/2;
+        const y = d.y+this.stage.canvas.height/2;
+        const w = this.img.width;
+        const h = this.img.height;
+        ctx.drawImage(this.img, x-w/2, y-h/2);
+    }
+}
+
 class Actor {
-    constructor(stage, sprite, pos) {
+    constructor(stage, sprite, pos, stats) {
+        this.stats = stats;
         this.stage = stage;
         this.sprite = sprite;
         this.pos = pos;
@@ -49,6 +69,7 @@ class Actor {
         this.last = this.sprite.imgs[0];
         this.lastMove = ['LR', 1];
         this.lastAttackTs = 0;
+        this.ts = 0;
     }
 
     set ai(ai) {
@@ -57,6 +78,7 @@ class Actor {
             const act = e.data;
             if (!act || !act.type) return;
             switch (act.type) {
+                case 'Attack': this.attack(this.ts); break;
                 case 'LR': this.move('LR', act.val); break;
                 case 'UD': this.move('UD', act.val); break;
             }
@@ -66,6 +88,37 @@ class Actor {
     attack(ts) {
         if (ts < this.lastAttackTs + this.stats.reload) return;
         this.lastAttackTs = ts;
+        // Melee
+        // Move dummy object and check collision
+        let swordDir = 0;
+        if (this.stats.range == 0) {
+            const testObj = {pos: this.pos.clone(), last: this.last};
+            if (this.lastMove[0] == 'LR') {
+                testObj.pos.x += 10*this.lastMove[1];
+                swordDir = this.lastMove[1] < 1 ? 1 : 0;
+            } else {
+                testObj.pos.y += 10*this.lastMove[1];
+                swordDir = this.lastMove[1] < 1 ? 2 : 3;
+            }
+            const act = this.stage.collide(testObj, obj => obj != this && obj.stats && obj.stats.hpmax);
+            if (!act) return;
+            // Display animation
+            const swordProp = new Prop(this.stage, this.stage.sprites['sword'].imgs[swordDir], testObj.pos);
+            this.stage.props.push(swordProp);
+            const anim = new Animation(this.stage, (animts) => {
+                const fin = animts-ts > 500;
+                if (fin) {
+                    this.stage.props.splice(this.stage.props.indexOf(swordProp), 1);
+                }
+                return fin;
+            });
+            this.stage.animations.push(anim);
+            // Adjust hp
+            act.stats.hp -= this.stats.strength;
+            if (act.stats.hp < 0) {
+                this.stage.kill(act);
+            }
+        }
     }
 
     contains(x, y) {
@@ -91,6 +144,16 @@ class Actor {
         const w = this.last.width;
         const h = this.last.height;
         ctx.drawImage(this.last, x-w/2, y-h/2, w, h);
+        // Draw damage bar
+        if (this.stats.hpmax) {
+            const barH = 5;
+            const barW = w;
+            ctx.fillStyle = '#0f0';
+            ctx.fillRect(x-w/2, y-h/2-barH, barW, barH);
+            const dmgW = w * (1 - this.stats.hp / this.stats.hpmax);
+            ctx.fillStyle = '#f00';
+            ctx.fillRect(x-w/2+(w-dmgW), y-h/2-barH, dmgW, barH);
+        }
     }
     
     move(how, val) {
@@ -173,12 +236,15 @@ class Actor {
     sanitize() {
         return {
             pos: this.pos,
+            last: {width: this.last.width, height: this.last.height},
+            lastMove: this.lastMove,
             stats: this.stats
         };
     }
 
-    tick(actors) {
+    tick(ts, actors) {
         if (!this.ai_) return;
+        this.ts = ts;
         this.ai_.postMessage({
             me: this.stage.actors.indexOf(this), 
             selected: this.stage.actors.indexOf(this.stage.selected), 
@@ -197,8 +263,8 @@ class Animation {
         this.stage.animations.splice(this.stage.animations.indexOf(this), 1);
     }
 
-    tick() {
-        const done = this.cb();
+    tick(ts) {
+        const done = this.cb(ts);
         if (done) {
             this.cancel();
         }
@@ -209,11 +275,14 @@ class Stage {
     constructor(canvas) {
         this.canvas = canvas;
         this.actors = [];
+        this.props = [];
         this.focus = new Point(0, 0);
         this.selected = null;
         this.team = [];
         this.animations = [];
         this.focusAnim = null;
+        // For animations
+        this.sprites = null;
     }
 
     click(x, y) {
@@ -253,11 +322,17 @@ class Stage {
         for (let i=0; i<this.actors.length; i++) {
             this.actors[i].draw(ctx);
         }
+        for (let i=0; i<this.props.length; i++) {
+            this.props[i].draw(ctx);
+        }
+    }
+
+    kill(actor) {
+        this.actors.splice(this.actors.indexOf(actor), 1);
     }
 
     make(sprite, pos, ai, stats) {
-        const actor = new Actor(this, sprite, pos);
-        actor.stats = stats;
+        const actor = new Actor(this, sprite, pos, stats);
         this.actors.push(actor);
         if (ai) {
             actor.ai = ai;
@@ -284,10 +359,10 @@ class Stage {
         this.animations.push(this.focusAnim);
     }
 
-    tick() {
+    tick(ts) {
         const actors = this.actors.map(a => a.sanitize());
-        this.animations.forEach(a => a.tick());
-        this.actors.forEach(a => a.tick(actors));
+        this.animations.forEach(a => a.tick(ts));
+        this.actors.forEach(a => a.tick(ts, actors));
     }
 }
 
@@ -345,6 +420,7 @@ window.addEventListener('load', () => {
         'pig': new Sprite('pig', ['image/Pig128_48.png', 'image/Pig128_48rev.png', null, null], onLoad),
         'spider-minion': new Sprite('spider-minion', ['image/SpiderMinion128_42right.png', 'image/SpiderMinion128_42left.png', 'image/SpiderMinion128_42rev.png', 'image/SpiderMinion128_42.png'], onLoad),
         'rock': new Sprite('rock', ['image/Rock128_64.png', null, null, null], onLoad),
+        'sword': new Sprite('sword', ['image/Sword32_20right.png', 'image/Sword32_20left.png', 'image/Sword32_20up.png', 'image/Sword32_20down.png'], onLoad),
     };
 
     const stats = {
@@ -352,8 +428,8 @@ window.addEventListener('load', () => {
             type: 'pig',
             speed: 4,
             solid: true,
-            health: 20,
-            damage: 0,
+            hpmax: 20,
+            hp: 15,
             strength: 3,
             reload: 600,
             range: 0,
@@ -362,8 +438,8 @@ window.addEventListener('load', () => {
             type: 'spider-minion',
             speed: 2,
             solid: true,
-            health: 10,
-            damage: 0,
+            hpmax: 10,
+            hp: 10,
             strength: 1,
             reload: 1200,
             range: 0,
@@ -394,6 +470,10 @@ window.addEventListener('load', () => {
         'spider-minion': (e) => {
             const me = e.actors[e.me];
             e.actors.splice(e.me, 1);
+            const tgt = tryHitAll(me, e.actors, obj => obj.stats && obj.stats.type == 'pig');
+            if (tgt) {
+                return {type: 'Attack'};
+            }
             e.actors.sort((a, b) => {
                 if (a.stats.type == 'pig' && b.stats.type != 'pig') return -1;
                 if (b.stats.type == 'pig' && a.stats.type != 'pig') return 1;
@@ -414,7 +494,7 @@ window.addEventListener('load', () => {
                 } else if (Math.abs(dy) > 10) {
                     return dy < 0 ? {type: 'UD', val: -1} : {type: 'UD', val: 1};
                 }
-            }
+            } 
             return null;
         }
     };
@@ -432,14 +512,16 @@ window.addEventListener('load', () => {
     }
 
     function init() {
+        stage.make(sprites.rock, new Point(0, 0), null, stats.rock);
+        stage.make(sprites.rock, new Point(64, 0), null, stats.rock);
+        stage.make(sprites.rock, new Point(128, 0), null, stats.rock);
         stage.make(sprites.pig, new Point(20, 200), ais.pig, {...stats.pig, team: true});
         stage.make(sprites.pig, new Point(300, 200), ais.pig, {...stats.pig, team: true});
         stage.make(sprites['spider-minion'], new Point(100, 200), 
             ais['spider-minion'], stats['spider-minion']);
-        stage.make(sprites.rock, new Point(0, 0), null, stats.rock);
-        stage.make(sprites.rock, new Point(64, 0), null, stats.rock);
-        stage.make(sprites.rock, new Point(128, 0), null, stats.rock);
         stage.draw();    
+        // For animation
+        stage.sprites = sprites;
     }
 
     canvas.addEventListener('click', (e) => {
@@ -464,7 +546,7 @@ window.addEventListener('load', () => {
             }
         }
         pad.tick(ts);
-        stage.tick();
+        stage.tick(ts);
         stage.draw();
         window.requestAnimationFrame(step);
     }
