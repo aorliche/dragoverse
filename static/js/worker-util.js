@@ -18,7 +18,7 @@ function tryHit(a, obj) {
 
 function tryHitAll(a, actors, cb) {
     for (let i=0; i<actors.length; i++) {
-        if (!cb(actors[i]) || !tryHit(a, actors[i])) {
+        if (a.id == actors[i].id || !cb(actors[i]) || !tryHit(a, actors[i])) {
             continue;
         }
         return actors[i];
