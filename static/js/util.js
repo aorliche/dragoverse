@@ -1,5 +1,5 @@
 
-export {$, $$, approx, ccw, dist, drawText, fillCircle, strokeCircle, Point};
+export {$, $$, approx, ccw, collide, dist, drawText, getDirection, fillCircle, sep, strokeCircle, Point};
 
 const $ = (q) => document.querySelector(q);
 const $$ = (q) => [...document.querySelectorAll(q)];
@@ -8,8 +8,52 @@ function approx(a, b) {
     return Math.abs(a-b) < 0.01;
 }
 
+function collide(a, obj) {
+    const xover = Math.abs(obj.pos.x - a.pos.x) < obj.last.width/2 + a.last.width/2;
+    const yover = Math.abs(obj.pos.y - a.pos.y) < obj.last.height/2 + a.last.height/2;
+    return xover && yover;
+}
+
+// Points
 function dist(a, b) {
-    return Math.sqrt(Math.pow(a.x-b.x,2)+Math.pow(a.y-b.y,2))
+    const dx = a.x-b.x;
+    const dy = a.y-b.y; 
+    return Math.sqrt(dx*dx+dy*dy);
+}
+
+function getDirection(dx, dy) {
+    if (Math.abs(dx) > Math.abs(dy)) {
+        if (dx < 0) {
+            return 'left';
+        } else {
+            return 'right';
+        }
+    } else {
+        if (dy < 0) {
+            return 'up';
+        } else {
+            return 'down';
+        }
+    }
+}
+
+// Actors
+function sep(a, b) {
+    const dx = Math.abs(a.pos.x-b.pos.x);
+    const dy = Math.abs(a.pos.y-b.pos.y);
+    const w = a.last.width/2 + b.last.width/2;
+    const h = a.last.height/2 + b.last.height/2;
+    if (dx < w) {
+        const d = dy-h;
+        return d < 0 ? 0 : d;
+    }
+    if (dy < h) {
+        const d = dx-w;
+        return d < 0 ? 0 : d;
+    }
+    const dx2 = dx-w;
+    const dy2 = dy-h;
+    return Math.sqrt(dx2*dx2+dy2*dy2);
 }
 
 class Point {
@@ -23,7 +67,7 @@ class Point {
     }
 
     distTo(p) {
-        return dist(this, p);
+        return this.minus(p).norm();
     }
 
     equals(p) {

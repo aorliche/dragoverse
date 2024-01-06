@@ -1,5 +1,6 @@
 import {Animation} from './animation.js';
 import {sprites, ais, stats} from './main.js';
+import {getDirection, sep, Point} from './util.js';
 
 export {Actor};
 
@@ -19,14 +20,13 @@ let actorNum = 0;
 
 class Actor {
     constructor(stage, sprite, pos, stats) {
-        this.stats = stats;
+        this.stats = {...stats};
         this.stage = stage;
         this.sprite = sprite;
         this.pos = pos;
         this.moveAnim = null;
         this.ai_ = null;
-        this.last = this.sprite.imgs[0];
-        this.lastMove = ['LR', 1];
+        this.last = this.sprite.last;
         this.lastAttackTs = 0;
         this.ts = 0;
         this.id = actorNum++;
@@ -37,64 +37,76 @@ class Actor {
         this.ai_ = spawnWorker(ai);
         this.ai_.onmessage = e => {
             const act = e.data;
+            if (act && act.debug) console.log(act.debug);
             if (!act || !act.type) return;
             switch (act.type) {
-                case 'Attack': this.attack(this.ts); break;
-                case 'LR': this.move('LR', act.val); break;
-                case 'UD': this.move('UD', act.val); break;
-                case 'Spawn': 
-                    if (this.stats.type != 'spawner') break;
-                    this.stage.make(
-                        sprites['spider-minion'], 
-                        this.pos.clone(), 
-                        ais['spider-minion'], 
-                        stats['spider-minion']);
+                case 'Attack': this.attack(act.who); break;
+                case 'Move': this.move(act.where); break;
+                // Spawn, etc.
+                default: 
+                    if (this.stats.actions[act.type]) {
+                        this.stats.actions[act.type](this); 
+                    } else {
+                        console.log('Unknown action: ' + act.type);
+                    }
                     break;
             }
-            if (act.state) this.state = act.state;
+            if (act.state) {
+                this.state = act.state;
+            }
         };
     }
 
-    attack(ts) {
-        if (ts < this.lastAttackTs + this.stats.reload) return;
-        this.lastAttackTs = ts;
-        // Melee
-        // Move dummy object and check collision
-        let swordDir = 0;
-        if (this.stats.range == 0) {
-            const testObj = {pos: this.pos.clone(), last: this.last};
-            if (this.lastMove[0] == 'LR') {
-                testObj.pos.x += 10*this.lastMove[1];
-                swordDir = this.lastMove[1] < 1 ? 1 : 0;
-            } else {
-                testObj.pos.y += 10*this.lastMove[1];
-                swordDir = this.lastMove[1] < 1 ? 2 : 3;
-            }
-            const act = this.stage.collide(testObj, obj => obj != this && obj.stats && obj.stats.hpmax);
-            if (!act) return;
-            // Display animation
-            const swordProp = new Prop(this.stage, this.stage.sprites['sword'].imgs[swordDir], testObj.pos);
-            this.stage.props.push(swordProp);
-            const anim = new Animation(this.stage, (animts) => {
-                const fin = animts-ts > 300;
-                switch (swordDir) {
-                    case 0: swordProp.pos.x += 2; break;
-                    case 1: swordProp.pos.x -= 2; break;
-                    case 2: swordProp.pos.y -= 2; break;
-                    case 3: swordProp.pos.y += 2; break;
-                }
-                if (fin) {
-                    this.stage.props.splice(this.stage.props.indexOf(swordProp), 1);
-                }
-                return fin;
-            });
-            this.stage.animations.push(anim);
-            // Adjust hp
-            act.stats.hp -= this.stats.strength;
-            if (act.stats.hp < 0) {
-                this.stage.kill(act);
-            }
+    attack(who) {
+        if (!this.stats || !this.stats.reload) {
+            console.log('No attack');
+            return;
         }
+        who = this.stage.getActorById(who);
+        if (!who) {
+            console.log('No target');
+            return;
+        }
+        if (this.ts < this.lastAttackTs + this.stats.reload) return;
+        // Validate in range
+        const d = sep(this, who);
+        if (d > this.stats.range) {
+            console.log('Too far');
+            return
+        }
+        // Adjust reload
+        this.lastAttackTs = this.ts;
+        // Adjust hp
+        who.stats.hp -= this.stats.strength;
+        if (who.stats.hp < 0) {
+            this.stage.kill(who);
+        }
+        // Display animation
+        if (!this.stats || !this.stats.projectile) {
+            console.log('No projectile');
+            return;
+        }
+        const dx = who.pos.x - this.pos.x;
+        const dy = who.pos.y - this.pos.y;
+        const dir = getDirection(dx, dy);
+        const sprite = this.stage.sprites[this.stats.projectile];
+        const img = sprite.imgs[dir] ? sprite.imgs[dir] : sprite.last;
+        const prop = new Prop(this.stage, img, this.pos);
+        const ts = this.ts;
+        const anim = new Animation(this.stage, (animts) => {
+            const fin = animts-ts > 300;
+            switch (dir) {
+                case 'right': prop.pos.x += 2; break;
+                case 'left': prop.pos.x -= 2; break;
+                case 'up': prop.pos.y -= 2; break;
+                case 'down': prop.pos.y += 2; break;
+            }
+            return fin;
+        }, () => {
+            this.stage.props.splice(this.stage.props.indexOf(prop), 1);
+        });
+        this.stage.props.push(prop);
+        this.stage.animations.push(anim);
     }
 
     contains(x, y) {
@@ -131,78 +143,52 @@ class Actor {
             ctx.fillRect(x-w/2+(w-dmgW), y-h/2-barH, dmgW, barH);
         }
     }
-    
-    move(how, val) {
-        const sav = this.pos.clone();
-        if (how == 'LR') {
-            this.pos.x += this.stats.speed*val;
-            this.lastMove = ['LR', val > 0 ? 1 : -1];
-            // Reverse or not
-            if (val < 0 && this.sprite.imgs[1]) {
-                this.last = this.sprite.imgs[1];
-            } else if (val >= 0 && this.sprite.imgs[0]) {
-                this.last = this.sprite.imgs[0];
-            }
-        } else if (how == 'UD') {
-            this.pos.y += this.stats.speed*val;
-            this.lastMove = ['UD', val > 0 ? 1 : -1];
-            if (val <= 0 && this.sprite.imgs[2]) {
-                this.last = this.sprite.imgs[2];
-            } else if (val > 0 && this.sprite.imgs[3]) {
-                this.last = this.sprite.imgs[3];
-            }
+
+    move(pos) {
+        // Convert pos to Point
+        pos = new Point(pos.x, pos.y);
+        if (!this.stats.speed) {
+            console.log('No speed');
+            return;
         }
+        const sav = this.pos.clone();
+        const dx = pos.x - this.pos.x;
+        const dy = pos.y - this.pos.y;
+        // Update sprite
+        const dir = getDirection(dx, dy);
+        if (this.sprite.imgs[dir]) {
+            this.last = this.sprite.imgs[dir];
+        }
+        // Move
+        const d = pos.distTo(this.pos);
+        if (d < this.stats.speed) {
+            this.pos = pos.clone();
+        } else {
+            const md = pos.minus(this.pos).unit().times(this.stats.speed);
+            this.pos = this.pos.plus(md);
+        }
+        // Check collisions
         const obj = this.stage.collide(this, obj => obj.stats && obj.stats.solid);
+        // Push slightly away from colliding object
         if (obj) {
             this.pos = sav;
-        }
-        if (this.stage.selected == this) {
-            if (this.moveAnim) this.moveAnim.cancel();
-            this.stage.focus = this.pos.clone();
+            this.pos = this.pos.minus(obj.pos).unit().times(2).plus(this.pos);
         }
     }
 
+    // Main guy and other set and forget
     moveTo(pos) {
-        if (this.moveAnim) this.moveAnim.cancel();
+        if (this.moveAnim) {
+            this.moveAnim.cancel();
+        }
         this.moveAnim = new Animation(this.stage, () => {
-            const sav = this.pos.clone();
-            const d = pos.minus(this.pos);
-            const fin = d.norm() < this.stats.speed;
-            if (fin) {
-                this.pos = pos;
-                this.moveAnim = null;
-            } else {
-                this.pos = this.pos.plus(d.unit().times(this.stats.speed));
-            }
-            const obj = this.stage.collide(this, obj => obj.stats && obj.stats.solid);
-            if (obj) {
-                this.pos = sav;
-                this.moveAnim = null;
-                return true;
-            }
-            if (Math.abs(d.x) > Math.abs(d.y)) {
-                if (d.x < 0 && this.sprite.imgs[1]) {
-                    this.last = this.sprite.imgs[1];
-                } else if (d.x >= 0 && this.sprite.imgs[0]) {
-                    this.last = this.sprite.imgs[0];
-                } else if (d.y <= 0 && this.sprite.imgs[2]) {
-                    this.last = this.sprite.imgs[2];
-                } else if (d.y > 0 && this.sprite.imgs[3]) {
-                    this.last = this.sprite.imgs[3];
-                }
-            } else {
-                if (d.y <= 0 && this.sprite.imgs[2]) {
-                    this.last = this.sprite.imgs[2];
-                } else if (d.y > 0 && this.sprite.imgs[3]) {
-                    this.last = this.sprite.imgs[3];
-                } else if (d.x < 0 && this.sprite.imgs[1]) {
-                    this.last = this.sprite.imgs[1];
-                } else if (d.x >= 0 && this.sprite.imgs[0]) {
-                    this.last = this.sprite.imgs[0];
-                }
-            }
+            this.move(pos);
             if (this == this.stage.selected) {
                 this.stage.focus = this.pos.clone();
+            }
+            const fin = this.pos.equals(pos);
+            if (fin) {
+                this.moveAnim = null;
             }
             return fin;
         });
@@ -210,12 +196,18 @@ class Actor {
     }
 
     sanitize() {
+        const stats = {};
+        for (const prop in this.stats) {
+            if (prop != 'actions') {
+                stats[prop] = this.stats[prop];
+            }
+        }
         return {
             id: this.id,
             pos: this.pos,
             last: {width: this.last.width, height: this.last.height},
             lastMove: this.lastMove,
-            stats: this.stats,
+            stats: stats,
             state: this.state
         };
     }
@@ -223,9 +215,14 @@ class Actor {
     tick(ts, actors) {
         if (!this.ai_) return;
         this.ts = ts;
+        // Only allow interaction with actors within 1000px radius of selected actor
+        actors = actors.filter(a => a.pos.distTo(this.pos) < 1000);
+        const ids = actors.map(a => a.id);
         this.ai_.postMessage({
-            me: this.stage.actors.indexOf(this), 
-            selected: this.stage.actors.indexOf(this.stage.selected), 
+            me: ids.indexOf(this.id), 
+            selected: this.stage.selected
+                ? ids.indexOf(this.stage.selected.id)
+                : -1,
             actors,
             state: this.state,
             ts: ts
@@ -237,7 +234,7 @@ class Prop {
     constructor(stage, img, pos) {
         this.stage = stage;
         this.img = img;
-        this.pos = pos;
+        this.pos = pos.clone();
     }
 
     draw(ctx) {

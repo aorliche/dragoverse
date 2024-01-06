@@ -1,34 +1,8 @@
 import {$, $$, drawText, Point} from './util.js';
 import {Stage} from './stage.js';
+import {Sprite} from './sprite.js';
 
 export {sprites, stats, ais};
-
-class Sprite {
-    constructor(name, urls, onload) {
-        this.name = name;
-        this.last = null;
-        this.imgs = urls.map(url => {
-            if (!url) {
-                return null;
-            }
-            const img = new Image();
-            img.src = url;
-            img.onload = onload;
-            if (!this.last) {
-                this.last = img;
-            }
-            return img;
-        });
-    }
-
-    get nimgs() {
-        let num = 0;
-        for (let i=0; i<this.imgs.length; i++) {
-            if (this.imgs[i]) num++;
-        }
-        return num;
-    }
-}
 
 class Gamepad {
     constructor(stage) {
@@ -83,10 +57,27 @@ window.addEventListener('load', () => {
 
     // Right, left, down, up
     sprites = {
-        'pig': new Sprite('pig', ['image/Pig128_48.png', 'image/Pig128_48rev.png', null, null], onLoad),
-        'spider-minion': new Sprite('spider-minion', ['image/SpiderMinion128_42right.png', 'image/SpiderMinion128_42left.png', 'image/SpiderMinion128_42rev.png', 'image/SpiderMinion128_42.png'], onLoad),
-        'rock': new Sprite('rock', ['image/Rock128_64.png', null, null, null], onLoad),
-        'sword': new Sprite('sword', ['image/Sword32_20right.png', 'image/Sword32_20left.png', 'image/Sword32_20up.png', 'image/Sword32_20down.png'], onLoad),
+        'pig': new Sprite('pig', {
+            right: 'image/Pig128_48.png', 
+            left: 'image/Pig128_48rev.png', 
+            up: null, 
+            down: null
+        }, onLoad),
+        'spider-minion': new Sprite('spider-minion', {
+            right: 'image/SpiderMinion128_42right.png', 
+            left: 'image/SpiderMinion128_42left.png', 
+            up: 'image/SpiderMinion128_42rev.png', 
+            down: 'image/SpiderMinion128_42.png'
+        }, onLoad),
+        'rock': new Sprite('rock', {
+            img: 'image/Rock128_64.png'
+        }, onLoad),
+        'sword': new Sprite('sword', {
+            right: 'image/Sword32_20right.png', 
+            left: 'image/Sword32_20left.png', 
+            up: 'image/Sword32_20up.png', 
+            down: 'image/Sword32_20down.png'
+        }, onLoad),
     };
 
     stats = {
@@ -98,7 +89,8 @@ window.addEventListener('load', () => {
             hp: 15,
             strength: 3,
             reload: 600,
-            range: 0,
+            range: 10,
+            projectile: 'sword',
         },
         'spider-minion': {
             type: 'spider-minion',
@@ -108,7 +100,8 @@ window.addEventListener('load', () => {
             hp: 10,
             strength: 1,
             reload: 1200,
-            range: 0,
+            range: 10,
+            projectile: 'sword',
         },
         'rock': {
             type: 'environment',
@@ -116,8 +109,17 @@ window.addEventListener('load', () => {
         },
         'spawner': {
             type: 'spawner',
-            what: 'spider-minion',
             reload: 5000,
+            actions: {
+                Spawn: function(me) {
+                    me.stage.make(
+                        sprites['spider-minion'], 
+                        me.pos.clone(), 
+                        ais['spider-minion'], 
+                        stats['spider-minion']
+                    );
+                }
+            }
         }
     };
 
@@ -125,21 +127,17 @@ window.addEventListener('load', () => {
         'pig': (e) => {
             const me = e.actors[e.me];
             const selected = e.actors[e.selected];
-            const dx = selected.pos.x - me.pos.x;
-            const dy = selected.pos.y - me.pos.y;
-            const d = Math.sqrt(dx*dx+dy*dy);
             const acts = [];
             for (let i=0; i<e.actors.length; i++) {
                 const tgt = tryHitAll(me, e.actors, obj => obj.stats && obj.stats.type == 'spider-minion');
                 if (tgt) {
-                    return {type: 'Attack'};
+                    return {type: 'Attack', who: tgt.id};
                 }
             }
-            if (d > 200) {
-                if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) {
-                    return dx < 0 ? {type: 'LR', val: -1} : {type: 'LR', val: 1};
-                } else if (Math.abs(dy) > 10) {
-                    return dy < 0 ? {type: 'UD', val: -1} : {type: 'UD', val: 1};
+            if (selected) {
+                const d = dist(selected.pos, me.pos);
+                if (d > 200) {
+                    return {type: 'Move', where: selected.pos};
                 }
             }
             return null;
@@ -149,46 +147,36 @@ window.addEventListener('load', () => {
             e.actors.splice(e.me, 1);
             const tgt = tryHitAll(me, e.actors, obj => obj.stats && obj.stats.type == 'pig');
             if (tgt) {
-                return {type: 'Attack'};
+                return {type: 'Attack', who: tgt.id};
             }
-            e.actors.sort((a, b) => {
-                if (a.stats.type == 'pig' && b.stats.type != 'pig') return -1;
-                if (b.stats.type == 'pig' && a.stats.type != 'pig') return 1;
-                const dxa = a.pos.x - me.pos.x;
-                const dya = a.pos.y - me.pos.y;
-                const da = Math.sqrt(dxa*dxa+dya*dya);
-                const dxb = b.pos.x - me.pos.x;
-                const dyb = b.pos.y - me.pos.y;
-                const db = Math.sqrt(dxb*dxb+dyb*dyb);
+            const acts = e.actors.filter(obj => obj.stats && obj.stats.type == 'pig');
+            if (acts.length == 0) {
+                return null;
+            }
+            acts.sort((a, b) => {
+                const da = dist(a.pos, me.pos);
+                const db = dist(b.pos, me.pos);
                 return da-db;
             });
-            const dx = e.actors[0].pos.x - me.pos.x;
-            const dy = e.actors[0].pos.y - me.pos.y;
-            const d = Math.sqrt(dx*dx+dy*dy);
-            if (d > 30) {
-                if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) {
-                    return dx < 0 ? {type: 'LR', val: -1} : {type: 'LR', val: 1};
-                } else if (Math.abs(dy) > 10) {
-                    return dy < 0 ? {type: 'UD', val: -1} : {type: 'UD', val: 1};
-                }
-            } 
-            return null;
+            const closest = acts[0];
+            return {type: 'Move', where: closest.pos};
         },
         'spawner': (e) => {
             let nearby = false;
             const me = e.actors[e.me];
             e.actors.forEach(obj => {
                 if (obj.stats.type == 'spider-minion' || obj.stats.type == 'pig') {
-                    const dx = e.actors[0].pos.x - me.pos.x;
-                    const dy = e.actors[0].pos.y - me.pos.y;
-                    const d = Math.sqrt(dx*dx+dy*dy);
-                    if (d < 50) {
+                    const d = dist(obj.pos, me.pos);
+                    if (d < 300) {
                         nearby = true;
                     }
                 }
             });
             if (e.state == null) {
-                e.state = {prev: -1e6};
+                e.state = {prev: 0};
+            }
+            if (nearby) {
+                return {state: e.state};
             }
             if (e.ts > e.state.prev + me.stats.reload) {
                 e.state.prev = e.ts;

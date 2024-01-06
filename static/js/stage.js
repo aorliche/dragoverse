@@ -60,8 +60,20 @@ class Stage {
         }
     }
 
+    getActorById(id) {
+        for (let i=0; i<this.actors.length; i++) {
+            if (this.actors[i].id == id) {
+                return this.actors[i];
+            }
+        }
+        return null;
+    }
+
     kill(actor) {
         this.actors.splice(this.actors.indexOf(actor), 1);
+        if (actor == this.selected) {
+            this.selected = null;
+        }
     }
 
     make(sprite, pos, ai, stats) {
