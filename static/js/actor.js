@@ -1,5 +1,5 @@
 import {Animation} from './animation.js';
-import {sprites, ais, stats} from './main.js';
+import {sprites, ais, stats} from './params.js';
 import {getDirection, sep, Point} from './util.js';
 
 export {Actor};
@@ -168,7 +168,7 @@ class Actor {
             this.pos = this.pos.plus(md);
         }
         // Check collisions
-        const obj = this.stage.collide(this, obj => obj.stats && obj.stats.solid);
+        const obj = this.stage.collide(this, () => true);
         // Push slightly away from colliding object
         if (obj) {
             this.pos = sav;

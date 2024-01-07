@@ -92,6 +92,9 @@ class Point {
 
     unit() {
         const n = this.norm();
+        if (approx(n, 0)) {
+            return new Point(Math.random()-0.5, Math.random()-0.5).unit();
+        }
         return new Point(this.x/n, this.y/n);
     }
 }

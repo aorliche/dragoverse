@@ -9,6 +9,7 @@ class Stage {
         this.canvas = canvas;
         this.actors = [];
         this.props = [];
+        this.ground = [];
         this.focus = new Point(0, 0);
         this.selected = null;
         this.team = [];
@@ -74,6 +75,10 @@ class Stage {
         if (actor == this.selected) {
             this.selected = null;
         }
+    }
+
+    makeGround(sprite, pos) {
+
     }
 
     make(sprite, pos, ai, stats) {
