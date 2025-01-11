@@ -1,0 +1,15 @@
+C:\Users\aorli\Documents\GitHub\dragoverse\bin\Debug\net9.0-windows\dragoverse.exe
+C:\Users\aorli\Documents\GitHub\dragoverse\bin\Debug\net9.0-windows\dragoverse.deps.json
+C:\Users\aorli\Documents\GitHub\dragoverse\bin\Debug\net9.0-windows\dragoverse.runtimeconfig.json
+C:\Users\aorli\Documents\GitHub\dragoverse\bin\Debug\net9.0-windows\dragoverse.dll
+C:\Users\aorli\Documents\GitHub\dragoverse\bin\Debug\net9.0-windows\dragoverse.pdb
+C:\Users\aorli\Documents\GitHub\dragoverse\obj\Debug\net9.0-windows\dragoverse.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\aorli\Documents\GitHub\dragoverse\obj\Debug\net9.0-windows\dragoverse.AssemblyInfoInputs.cache
+C:\Users\aorli\Documents\GitHub\dragoverse\obj\Debug\net9.0-windows\dragoverse.AssemblyInfo.cs
+C:\Users\aorli\Documents\GitHub\dragoverse\obj\Debug\net9.0-windows\dragoverse.csproj.CoreCompileInputs.cache
+C:\Users\aorli\Documents\GitHub\dragoverse\obj\Debug\net9.0-windows\dragoverse.sourcelink.json
+C:\Users\aorli\Documents\GitHub\dragoverse\obj\Debug\net9.0-windows\dragoverse.dll
+C:\Users\aorli\Documents\GitHub\dragoverse\obj\Debug\net9.0-windows\refint\dragoverse.dll
+C:\Users\aorli\Documents\GitHub\dragoverse\obj\Debug\net9.0-windows\dragoverse.pdb
+C:\Users\aorli\Documents\GitHub\dragoverse\obj\Debug\net9.0-windows\dragoverse.genruntimeconfig.cache
+C:\Users\aorli\Documents\GitHub\dragoverse\obj\Debug\net9.0-windows\ref\dragoverse.dll
